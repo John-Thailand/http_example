@@ -29,6 +29,8 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   List items = [];
+  bool isError = false;
+  String errorString = '';
 
   Future<void> getData() async {
     // https://www.youtube.com/watch?v=2tBbC1rZo3Q&t=489s
@@ -39,19 +41,52 @@ class _MyHomePageState extends State<MyHomePage> {
     // 第二引数：Path（そのサーバーのどこのことを指すか）
     // 第三引数：Query
     try {
+      // 1. GetでResponseを取得
       var response = await http.get(Uri.https(
           'www.googleapis.com',
           '/books/v1/volumes',
           {'q': '{Flutter}', 'maxResults': '40', 'langRestrict': 'ja'}));
-      var jsonResponse = jsonDecode(response.body);
-
+      // 2. 問題がなければ、Json型に変換したデータを格納
+      var jsonResponse = _response(response);
+      // 3. 本の情報をリスト形式でデータを格納
       setState(() {
         items = jsonResponse['items'];
       });
-      // エラーがネットワークで発生したときに、Socket クラスと Dns クラスによってスローされます。
-    } on SocketException catch (error) {
+      // throw Exception();
+    } on SocketException catch (socketException) {
       // ソケット操作が失敗した時にスローされる例外
-      print('No Internet connection');
+      debugPrint("Error: ${socketException.toString()}");
+      isError = true;
+    } on Exception catch (exception) {
+      // statusCode: 200以外の場合
+      debugPrint("Error: ${exception.toString()}");
+      isError = true;
+    } catch (_) {
+      debugPrint("Error: 何かしらの問題が発生しています");
+      isError = true;
+    }
+  }
+
+  dynamic _response(http.Response response) {
+    switch (response.statusCode) {
+      case 200:
+        var responseJson = jsonDecode(response.body);
+        return responseJson;
+      case 400:
+        // 400 Bad Request : 一般的なクライアントエラー
+        throw Exception('一般的なクライアントエラーです');
+      case 401:
+        // 401 Unauthorized : アクセス権がない、または認証に失敗
+        throw Exception('アクセス権限がない、または認証に失敗しました');
+      case 403:
+        // 403 Forbidden ： 閲覧権限がないファイルやフォルダ
+        throw Exception('閲覧権限がないファイルやフォルダです');
+      case 500:
+        // 500 何らかのサーバー内で起きたエラー
+        throw Exception('何らかのサーバー内で起きたエラーです');
+      default:
+        // それ以外の場合
+        throw Exception('何かしらの問題が発生しています');
     }
   }
 
@@ -68,26 +103,30 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: const Text('Flutter Sample'),
       ),
-      body: ListView.builder(
-        itemCount: items.length,
-        itemBuilder: (BuildContext context, int index) {
-          return Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Image.network(
-                    items[index]['volumeInfo']['imageLinks']['thumbnail'],
+      body: isError
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : ListView.builder(
+              itemCount: items.length,
+              itemBuilder: (BuildContext context, int index) {
+                return Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Image.network(
+                          items[index]['volumeInfo']['imageLinks']['thumbnail'],
+                        ),
+                        title: Text(items[index]['volumeInfo']['title']),
+                        subtitle: Text(
+                          items[index]['volumeInfo']['publishedDate'],
+                        ),
+                      ),
+                    ],
                   ),
-                  title: Text(items[index]['volumeInfo']['title']),
-                  subtitle: Text(
-                    items[index]['volumeInfo']['publishedDate'],
-                  ),
-                ),
-              ],
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 }
